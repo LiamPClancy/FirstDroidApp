@@ -1,13 +1,32 @@
 package learnplaycreate.lpcmessage;
 
+import android.app.DownloadManager;
+import android.graphics.Bitmap;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
+import android.os.StrictMode;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.content.Intent;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Toast;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultHttpClient;
+
+import java.net.MalformedURLException;
+import java.net.URL;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -20,10 +39,15 @@ import java.net.URL;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class DisplayMessage extends ActionBarActivity {
+import learnplaycreate.lpcmessage.Models.Message;
 
-    public final static String EXTRA_MESSAGE = "com.mycompany.myfirstapp.MESSAGE";
 
+public class DisplayMessage extends ActionBarActivity{
+
+    public final static String EXTRA_MESSAGE = "Hi";
+    private String message;
+
+    private Intent intent;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -37,6 +61,8 @@ public class DisplayMessage extends ActionBarActivity {
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.menu_display_message, menu);
         return super.onCreateOptionsMenu(menu);
+
+
     }
 
     @Override
@@ -59,50 +85,95 @@ public class DisplayMessage extends ActionBarActivity {
     }
 
     public void sendMessage(View view) {
-        Intent intent = new Intent(this, ShowMessage.class);
+        intent = new Intent(this, ShowMessage.class);
+        if (isConnected()){
+            message = "retreiving message";
+        }
+        else
+        {
+            message = "please check your network connection";
+        }
         //EditText editText = (EditText) findViewById(R.id.edit_message);
         //String message = editText.getText().toString();
-        String message = GetMessageFromWeb();
         intent.putExtra(EXTRA_MESSAGE, message);
         startActivity(intent);
+        SetMessageToUi(view);
     }
 
-    private String GetMessageFromWeb() {
-        String WebMessage = "this is a test again";
+    private void SetMessageToUi(View v)
+    {
+        final WebCommunication wc  = new WebCommunication(this);
+        message = "Testing123"; //wc.GetMessageFromWeb();
+        //intent.putExtra(EXTRA_MESSAGE, message);
+        //startActivity(intent);
 
+        new HttpAsyncTask().execute("http://54.68.153.157");
+        //new Thread(new Runnable() {
+        //    public void run() {
+
+        //    }
+        //}).start();
+    }
+
+    public static String GET(String url){
+        InputStream inputStream = null;
+        String result = "";
         try {
-            URL u = new URL("http://192.168.0.101:8080/Message.json");
-            HttpURLConnection c = (HttpURLConnection) u.openConnection();
-            c.setRequestMethod("GET");
-            c.setRequestProperty("Content-length", "0");
-            c.setUseCaches(false);
-            c.setAllowUserInteraction(false);
-            c.setConnectTimeout(3000);
-            c.setReadTimeout(3000);
-            c.connect();
-            int status = c.getResponseCode();
 
-            switch (status) {
-                case 200:
-                case 201:
-                    BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        sb.append(line+"\n");
-                    }
-                    br.close();
-                    return sb.toString();
-            }
+            // create HttpClient
+            HttpClient httpclient = new DefaultHttpClient();
 
-        } catch (MalformedURLException ex) {
+            // make GET request to the given URL
+            HttpResponse httpResponse = httpclient.execute(new HttpGet(url));
 
-        } catch (IOException ex) {
+            // receive response as inputStream
+            inputStream = httpResponse.getEntity().getContent();
 
+            // convert inputstream to string
+            if(inputStream != null)
+                result = convertInputStreamToString(inputStream);
+            else
+                result = "Did not work!";
+
+        } catch (Exception e) {
+            String errorString = e.toString();
         }
 
-        return null;
+        return result;
     }
+
+    private static String convertInputStreamToString(InputStream inputStream) throws IOException{
+        BufferedReader bufferedReader = new BufferedReader( new InputStreamReader(inputStream));
+        String line = "";
+        String result = "";
+        while((line = bufferedReader.readLine()) != null)
+            result += line;
+
+        inputStream.close();
+        return result;
+
+    }
+
+    public boolean isConnected(){
+        ConnectivityManager connMgr = (ConnectivityManager) getSystemService(this.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = null;
+        try {
+            networkInfo = connMgr.getActiveNetworkInfo();
+        }
+        catch (Exception ex){
+            String errorString = ex.toString();
+        }
+        if (networkInfo != null && networkInfo.isConnected())
+            return true;
+        else
+            return false;
+    }
+
+    private Message GetMessageObjectFromJson(String jsonString)
+    {
+        return new Gson().fromJson(jsonString, Message.class);
+    }
+
     public void openSearch()
     {
         return;
@@ -112,4 +183,23 @@ public class DisplayMessage extends ActionBarActivity {
     {
         return;
     }
+
+    private class HttpAsyncTask extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String... urls) {
+
+            return GET(urls[0]);
+        }
+        // onPostExecute displays the results of the AsyncTask.
+        @Override
+        protected void onPostExecute(String result) {
+            Toast.makeText(getBaseContext(), "Received!", Toast.LENGTH_LONG).show();
+            //message = result;
+            Message mess = GetMessageObjectFromJson(result);
+            message = mess.getMessage();
+            intent.putExtra(EXTRA_MESSAGE, message);
+            startActivity(intent);
+        }
+    }
 }
+
